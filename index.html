@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="uk" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      `viewport-fit=cover` — щоб застосунок займав увесь екран iPhone разом із
+      областю під «чубчиком»; відступи повертаємо через env(safe-area-inset-*).
+      `maximum-scale=1` прибирає автозум Safari на полях вводу: у нас великі
+      поля, зум тільки б смикав сторінку.
+    -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+    />
+    <meta name="description" content="Картки лояльності, що завжди під рукою — навіть без інтернету" />
+    <!--
+      Safari до цього часу читає `display: standalone` з маніфеста не в усіх
+      версіях, тому лишається і старий спосіб сказати те саме.
+    -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="StashCards" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#09090b" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <title>StashCards</title>
+  </head>
+  <body class="h-full">
+    <div id="root" class="h-full"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

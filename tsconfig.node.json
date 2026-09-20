@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    // DOM тут потрібен не конфігам, а сценаріям Playwright: усередині
+    // `page.evaluate` код виконується в браузері, а не в Node.
+    "lib": ["ES2023", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true
+  },
+  "include": ["vite.config.ts", "vitest.config.mts", "playwright.config.ts", "e2e", "scripts"]
+}

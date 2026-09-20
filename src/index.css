@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+/*
+  Застосунок навмисно темний: його відкривають переважно в приміщенні магазину,
+  однією рукою, на секунду. Світлий інтерфейс у такій ситуації б'є по очах.
+  Виняток — екран самої картки: він білий, бо це вимога сканерів.
+*/
+@theme {
+  --color-ink: #09090b;
+  --color-surface: #18181b;
+  --color-surface-2: #27272a;
+  --color-line: #3f3f46;
+  --color-text: #fafafa;
+  --color-muted: #a1a1aa;
+  --color-danger: #f87171;
+
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-ink);
+  color: var(--color-text);
+  /*
+    Застосунок ніколи не скролиться «гумкою» за межі контенту: у standalone
+    на iOS це виглядає як відклеєний від екрана інтерфейс.
+  */
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/*
+  Довге натискання на картці не має виділяти текст — воно призначене для
+  перетягування й контекстних дій.
+*/
+.no-select {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
