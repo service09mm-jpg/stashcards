@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import {
   DndContext,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   closestCenter,
   useSensor,
   useSensors,
@@ -27,6 +28,14 @@ import { IosInstallHint } from "./IosInstallHint";
  */
 const DRAG_HOLD_MS = 250;
 const DRAG_TOLERANCE_PX = 8;
+
+/**
+ * Наскільки посунути мишею, щоб почалося перетягування.
+ *
+ * Для миші утримання не потрібне: курсор не може «випадково поїхати», тож
+ * зрушення з натиснутою кнопкою вже однозначно означає намір перетягнути.
+ */
+const DRAG_DISTANCE_PX = 8;
 
 const HINT_SEEN_KEY = "stashcards.reorder-hint-seen";
 
@@ -56,11 +65,35 @@ export function HomePage() {
   const items = useMemo(() => applyOrder(cards, pendingOrder), [cards, pendingOrder]);
   const ids = useMemo(() => items.map((card) => card.id), [items]);
 
+  /*
+    Миша й палець — два окремі сенсори, і це не надмірність.
+
+    Спільний `PointerSensor` тут не працює в принципі: він скасовує
+    перетягування на події `pointercancel`, а саме її браузер і надсилає,
+    коли вирішує, що жест — це гортання сторінки. На телефоні перетягування
+    вмирало, щойно палець рушав вертикально; горизонтально інколи виходило
+    лише тому, що вбік гортати нема куди.
+
+    `TouchSensor` побудований саме під цей випадок: він слухає `touchmove`
+    непасивно й після початку перетягування скасовує стандартну поведінку,
+    чим і забирає жест у гортання. До того моменту гортання працює як
+    звичайно — `preventDefault` викликається лише після того, як утримання
+    вже відбулося.
+  */
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: DRAG_DISTANCE_PX },
+    }),
+    useSensor(TouchSensor, {
       activationConstraint: { delay: DRAG_HOLD_MS, tolerance: DRAG_TOLERANCE_PX },
     }),
   );
+
+  // Коротка вібрація в мить захоплення. Без неї незрозуміло, чи картка
+  // «взялася», — палець накриває саме ту плитку, яку піднімає, і візуального
+  // підйому під ним не видно. На iOS вібрації з браузера немає, там лишається
+  // тільки підйом плитки.
+  const handleDragStart = () => navigator.vibrate?.(30);
 
   const handleDragEnd = async ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
@@ -111,6 +144,7 @@ export function HomePage() {
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
               onDragEnd={(event) => void handleDragEnd(event)}
             >
               <SortableContext items={ids} strategy={rectSortingStrategy}>
