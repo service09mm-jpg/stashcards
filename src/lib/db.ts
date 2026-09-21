@@ -20,13 +20,42 @@ const db = new Dexie("stashcards") as Dexie & {
   кілька мегабайтів блобів заради назв і кольорів. Список — найчастіша
   операція в застосунку, і він має лишатися миттєвим.
 
-  В індексах лише те, за чим справді шукаємо: сортування списку (`lastUsedAt`),
+  В індексах лише те, за чим справді шукаємо: порядок списку (`position`),
   відсів видалених (`deletedAt`) і майбутня синхронізація (`updatedAt`).
 */
 db.version(1).stores({
   cards: "id, lastUsedAt, updatedAt, deletedAt",
   photos: "cardId",
 });
+
+/*
+  Друга версія прибирає автоматичне сортування за частотою використання й
+  віддає порядок юзеру.
+
+  Перехід переносить той порядок, який людина бачила перед оновленням, у
+  ручний: картки нумеруються так, як вони стояли востаннє. Інакше після
+  оновлення застосунку список одного ранку перетасувався б сам — рівно те, від
+  чого ця зміна й позбавляє.
+*/
+db.version(2)
+  .stores({ cards: "id, position, updatedAt, deletedAt" })
+  .upgrade(async (tx) => {
+    type LegacyCard = Card & { lastUsedAt?: number; usageCount?: number };
+
+    const table = tx.table<LegacyCard, string>("cards");
+    const rows = await table.toArray();
+    rows.sort(
+      (a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0) || b.createdAt - a.createdAt,
+    );
+
+    for (const [index, row] of rows.entries()) {
+      // Лічильники використання свідомо не переносяться: нічого в застосунку
+      // їх більше не читає, а мовчки збирати статистику, яка нікому не
+      // потрібна, — не те, чого чекають від застосунку без сервера.
+      const { lastUsedAt: _lastUsedAt, usageCount: _usageCount, ...rest } = row;
+      await table.put({ ...rest, position: index });
+    }
+  });
 
 export { db };
 
@@ -39,16 +68,15 @@ function newId(): string {
 }
 
 /**
- * Список карток: спершу ті, якими користувалися востаннє.
+ * Список карток у порядку, який задав юзер.
  *
- * Це головна оптимізація всього застосунку. У більшості людей є дві-три
- * картки, якими вони користуються постійно, і десяток забутих. Сортування за
- * останнім використанням ставить потрібну першою, тож шлях від іконки до
- * штрихкоду — два дотики й жодного пошуку очима.
+ * Сортування робиться в пам'яті, а не запитом за індексом, навмисно: карток
+ * десятки, різниці в швидкості немає, зате видимий порядок повністю описаний
+ * ось цим одним рядком, який не розходиться з тим, що зберігає `reorderCards`.
  */
 export async function listCards(): Promise<Card[]> {
   const alive = await db.cards.where("deletedAt").equals(0).toArray();
-  return alive.sort((a, b) => b.lastUsedAt - a.lastUsedAt || b.createdAt - a.createdAt);
+  return alive.sort((a, b) => a.position - b.position || a.createdAt - b.createdAt);
 }
 
 /**
@@ -65,17 +93,42 @@ export async function getCard(id: string): Promise<Card | null> {
 
 export async function createCard(draft: CardDraft): Promise<Card> {
   const now = Date.now();
+  // Нова картка стає в кінець списку. Ставити її першою означало б щоразу
+  // зсувати все, що юзер уже розставив, — а розставляв він саме для того, щоб
+  // нічого не рухалося.
+  const last = await db.cards.orderBy("position").last();
+
   const card: Card = {
     id: newId(),
     ...draft,
     createdAt: now,
     updatedAt: now,
     deletedAt: 0,
-    lastUsedAt: 0,
-    usageCount: 0,
+    position: last ? last.position + 1 : 0,
   };
   await db.cards.add(card);
   return card;
+}
+
+/**
+ * Новий порядок списку.
+ *
+ * На вхід іде повний перелік живих карток так, як вони тепер мають стояти.
+ * Записуються тільки ті, чиє місце справді змінилося: після перетягування
+ * однієї картки решта переважно лишається на місці, і переписувати весь
+ * список означало б без потреби позначити кожну картку як змінену — а
+ * `updatedAt` колись вирішуватиме конфлікти синхронізації.
+ */
+export async function reorderCards(orderedIds: readonly string[]): Promise<void> {
+  const now = Date.now();
+
+  await db.transaction("rw", db.cards, async () => {
+    for (const [position, id] of orderedIds.entries()) {
+      const card = await db.cards.get(id);
+      if (!card || card.deletedAt !== 0 || card.position === position) continue;
+      await db.cards.update(id, { position, updatedAt: now });
+    }
+  });
 }
 
 export async function updateCard(
@@ -97,21 +150,6 @@ export async function deleteCard(id: string): Promise<void> {
   await db.transaction("rw", db.cards, db.photos, async () => {
     await db.cards.update(id, { deletedAt: now, updatedAt: now });
     await db.photos.delete(id);
-  });
-}
-
-/**
- * Відмітка про використання картки. Викликається, коли штрихкод показали на
- * екрані, — саме з неї й береться порядок у списку.
- */
-export async function touchCard(id: string): Promise<void> {
-  const card = await db.cards.get(id);
-  if (!card || card.deletedAt !== 0) return;
-  await db.cards.update(id, {
-    lastUsedAt: Date.now(),
-    usageCount: card.usageCount + 1,
-    // `updatedAt` навмисно не чіпаємо: показ картки — не зміна її вмісту, і
-    // майбутній синхронізації нема чого через це прокидатися.
   });
 }
 

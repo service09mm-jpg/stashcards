@@ -20,7 +20,15 @@ const SIGNATURE = "stashcards";
 
 type BackupPhoto = string; // data:-посилання
 
-export type BackupCard = Omit<Card, "deletedAt"> & {
+/**
+ * Картка у файлі копії.
+ *
+ * `position` необов'язковий: копії, зроблені до появи ручного порядку, його не
+ * містять. Такі картки при відновленні стають у кінець списку — місця в ньому
+ * тоді ще не існувало, і вигадувати його заднім числом нема з чого.
+ */
+export type BackupCard = Omit<Card, "deletedAt" | "position"> & {
+  position?: number;
   photos?: { front?: BackupPhoto; back?: BackupPhoto };
 };
 
@@ -102,7 +110,7 @@ export async function restoreBackup(cards: BackupCard[]): Promise<ImportReport> 
   const report: ImportReport = { added: 0, updated: 0, skipped: 0 };
 
   for (const incoming of cards) {
-    const { photos, ...fields } = incoming;
+    const { photos, position, ...fields } = incoming;
     const existing = await db.cards.get(fields.id);
 
     if (existing && existing.updatedAt >= fields.updatedAt) {
@@ -110,7 +118,20 @@ export async function restoreBackup(cards: BackupCard[]): Promise<ImportReport> 
       continue;
     }
 
-    await db.cards.put({ ...fields, deletedAt: 0 });
+    // Поля перелічені поіменно, а не розсипані з файла: у копії можуть
+    // лежати рештки старіших версій формату, і їм нема чого потрапляти в базу.
+    await db.cards.put({
+      id: fields.id,
+      name: fields.name,
+      code: fields.code,
+      format: fields.format,
+      color: fields.color,
+      note: fields.note ?? "",
+      createdAt: fields.createdAt ?? Date.now(),
+      updatedAt: fields.updatedAt,
+      deletedAt: 0,
+      position: position ?? (existing?.position ?? (await nextPosition())),
+    });
     if (existing) report.updated += 1;
     else report.added += 1;
 
@@ -122,6 +143,12 @@ export async function restoreBackup(cards: BackupCard[]): Promise<ImportReport> 
   }
 
   return report;
+}
+
+/** Місце в кінці списку — для карток із копії, яка порядку ще не знала. */
+async function nextPosition(): Promise<number> {
+  const last = await db.cards.orderBy("position").last();
+  return last ? last.position + 1 : 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

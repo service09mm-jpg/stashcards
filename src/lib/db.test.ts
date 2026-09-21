@@ -6,8 +6,8 @@ import {
   getCard,
   getPhotos,
   listCards,
+  reorderCards,
   setPhoto,
-  touchCard,
   updateCard,
 } from "./db";
 
@@ -24,34 +24,85 @@ beforeEach(async () => {
   await db.photos.clear();
 });
 
-describe("список карток", () => {
-  it("ставить першою ту, якою користувалися востаннє", async () => {
-    const silpo = await createCard(draft("Сільпо"));
-    const atb = await createCard(draft("АТБ"));
+const names = async () => (await listCards()).map((card) => card.name);
 
-    await touchCard(silpo.id);
-    await touchCard(atb.id);
+describe("порядок списку", () => {
+  it("зберігає порядок, у якому картки додали", async () => {
+    await createCard(draft("Перша"));
+    await createCard(draft("Друга"));
+    await createCard(draft("Третя"));
 
-    const names = (await listCards()).map((card) => card.name);
-    expect(names).toEqual(["АТБ", "Сільпо"]);
+    expect(await names()).toEqual(["Перша", "Друга", "Третя"]);
   });
 
-  it("ставить ще не вживані картки після вживаних, новіші вище", async () => {
-    const old = await createCard(draft("Стара"));
-    await createCard(draft("Нова"));
-    await touchCard(old.id);
+  it("ставить нову картку в кінець, не зсуваючи розставлене", async () => {
+    await createCard(draft("Перша"));
+    await createCard(draft("Друга"));
 
-    const names = (await listCards()).map((card) => card.name);
-    expect(names).toEqual(["Стара", "Нова"]);
+    await createCard(draft("Третя"));
+
+    expect(await names()).toEqual(["Перша", "Друга", "Третя"]);
   });
 
-  it("рахує, скільки разів картку показували", async () => {
-    const card = await createCard(draft("Аптека"));
+  it("не змінює порядок від того, що картку відкривали", async () => {
+    const first = await createCard(draft("Перша"));
+    await createCard(draft("Друга"));
 
-    await touchCard(card.id);
-    await touchCard(card.id);
+    // Саме цього юзер і просив: відкриття картки більше ні на що не впливає.
+    await getCard(first.id);
+    await getCard(first.id);
 
-    expect((await getCard(card.id))?.usageCount).toBe(2);
+    expect(await names()).toEqual(["Перша", "Друга"]);
+  });
+});
+
+describe("перестановка карток", () => {
+  it("запам'ятовує порядок, заданий юзером", async () => {
+    const first = await createCard(draft("Перша"));
+    const second = await createCard(draft("Друга"));
+    const third = await createCard(draft("Третя"));
+
+    await reorderCards([third.id, first.id, second.id]);
+
+    expect(await names()).toEqual(["Третя", "Перша", "Друга"]);
+  });
+
+  it("позначає зміненими лише ті картки, що справді переїхали", async () => {
+    const first = await createCard(draft("Перша"));
+    const second = await createCard(draft("Друга"));
+    const third = await createCard(draft("Третя"));
+
+    // Відсуваємо час останньої зміни далеко в минуле: інакше «до» і «після»
+    // могли б припасти на ту саму мілісекунду й тест нічого не перевіряв би.
+    const longAgo = 1_000;
+    for (const card of [first, second, third]) {
+      await db.cards.update(card.id, { updatedAt: longAgo });
+    }
+
+    // Міняємо місцями перші дві: третя лишається там, де й була.
+    await reorderCards([second.id, first.id, third.id]);
+
+    expect((await getCard(third.id))?.updatedAt).toBe(longAgo);
+    expect((await getCard(first.id))?.updatedAt).toBeGreaterThan(longAgo);
+  });
+
+  it("переживає порядок із неіснуючою карткою", async () => {
+    const first = await createCard(draft("Перша"));
+    const second = await createCard(draft("Друга"));
+
+    await reorderCards([second.id, "картки-з-таким-id-немає", first.id]);
+
+    expect(await names()).toEqual(["Друга", "Перша"]);
+  });
+
+  it("не воскрешає видалену картку", async () => {
+    const first = await createCard(draft("Перша"));
+    const second = await createCard(draft("Друга"));
+    await deleteCard(second.id);
+
+    await reorderCards([second.id, first.id]);
+
+    expect(await names()).toEqual(["Перша"]);
   });
 });
 
@@ -83,14 +134,6 @@ describe("видалення", () => {
     expect(await getPhotos(card.id)).toBeUndefined();
   });
 
-  it("не воскрешає видалену картку при показі", async () => {
-    const card = await createCard(draft("Зайва"));
-    await deleteCard(card.id);
-
-    await touchCard(card.id);
-
-    expect(await listCards()).toHaveLength(0);
-  });
 });
 
 describe("зміни", () => {
@@ -104,15 +147,6 @@ describe("зміни", () => {
     expect(changed?.updatedAt).toBeGreaterThanOrEqual(card.updatedAt);
   });
 
-  it("не рахує показ картки за її зміну", async () => {
-    const card = await createCard(draft("Сільпо"));
-
-    await touchCard(card.id);
-
-    // Показ змінює лише порядок у списку. Якби він чіпав `updatedAt`, кожне
-    // відкриття картки виглядало б для синхронізації як правка.
-    expect((await getCard(card.id))?.updatedAt).toBe(card.updatedAt);
-  });
 });
 
 describe("фотографії", () => {

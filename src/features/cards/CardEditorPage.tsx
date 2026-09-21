@@ -14,6 +14,7 @@ import { CARD_COLORS, nextColor } from "@/lib/card";
 import { createCard, deleteCard, getCard, getPhotos, listCards, setPhoto, updateCard } from "@/lib/db";
 import { shrinkImage } from "@/lib/image";
 import type { ScanHit } from "@/lib/scanner";
+import { useBack } from "@/lib/useBack";
 import { Button } from "@/ui/Button";
 import { Field } from "@/ui/Field";
 import { BackIcon, CameraIcon, TrashIcon } from "@/ui/icons";
@@ -29,6 +30,12 @@ type Props = { mode: "create" | "edit" };
 export function CardEditorPage({ mode }: Props) {
   const { id = "" } = useParams();
   const navigate = useNavigate();
+  const goBack = useBack();
+  // Після збереження правок повертаємося тим самим шляхом, яким сюди
+  // прийшли, — знімаючи запис, а не додаючи ще один поверх нього. Інакше
+  // екран картки опинявся б в історії двічі поспіль і системне «назад»
+  // спершу показувало б його знову.
+  const backToCard = useBack(id ? `/card/${id}` : "/");
 
   const existing = useLiveQuery(() => (mode === "edit" ? getCard(id) : null), [mode, id]);
   const existingPhotos = useLiveQuery(
@@ -106,7 +113,7 @@ export function CardEditorPage({ mode }: Props) {
 
     if (mode === "edit") {
       await updateCard(id, draft);
-      navigate(`/card/${id}`, { replace: true });
+      backToCard();
       return;
     }
 
@@ -136,7 +143,7 @@ export function CardEditorPage({ mode }: Props) {
       <header className="flex items-center gap-1 px-2 pt-[max(0.5rem,env(safe-area-inset-top))] pb-2">
         <button
           type="button"
-          onClick={() => navigate(-1)}
+          onClick={goBack}
           aria-label="Назад"
           className="flex size-11 items-center justify-center rounded-full text-muted active:bg-surface"
         >

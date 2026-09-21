@@ -28,8 +28,8 @@ test("картка відкривається без мережі", async ({ pag
   await expect(page.getByTestId("barcode").locator("svg")).toBeVisible();
   await expect(page.getByText("4006381333931")).toBeVisible();
 
-  await page.getByRole("link", { name: "Назад" }).click();
-  await expect(page.getByRole("link", { name: /Сільпо/ })).toBeVisible();
+  await page.getByRole("button", { name: "Назад" }).click();
+  await expect(page.getByRole("button", { name: /Сільпо/ })).toBeVisible();
 });
 
 test("нову картку можна додати без мережі", async ({ page, context }) => {

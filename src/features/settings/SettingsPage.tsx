@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Link } from "react-router";
 import {
   backupFileName,
   createBackup,
@@ -10,6 +9,7 @@ import {
 } from "@/lib/backup";
 import { listCards, requestPersistentStorage } from "@/lib/db";
 import { saveFile } from "@/lib/platform";
+import { useBack } from "@/lib/useBack";
 import { Button } from "@/ui/Button";
 import { BackIcon, DownloadIcon, UploadIcon } from "@/ui/icons";
 
@@ -17,6 +17,7 @@ type Message = { kind: "ok" | "error"; text: string } | null;
 
 export function SettingsPage() {
   const cards = useLiveQuery(listCards, []);
+  const goBack = useBack();
   const [message, setMessage] = useState<Message>(null);
   const [persisted, setPersisted] = useState<boolean | null>(null);
 
@@ -53,13 +54,14 @@ export function SettingsPage() {
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-1 px-2 pt-[max(0.5rem,env(safe-area-inset-top))] pb-2">
-        <Link
-          to="/"
+        <button
+          type="button"
+          onClick={goBack}
           aria-label="Назад"
           className="flex size-11 items-center justify-center rounded-full text-muted active:bg-surface"
         >
           <BackIcon />
-        </Link>
+        </button>
         <h1 className="text-lg font-semibold">Налаштування</h1>
       </header>
 

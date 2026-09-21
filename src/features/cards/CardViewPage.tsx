@@ -3,7 +3,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { Link, Navigate, useParams } from "react-router";
 import { renderBarcode } from "@/lib/barcode";
 import { formatLabel, isMatrixFormat } from "@/lib/barcodeFormats";
-import { getCard, getPhotos, touchCard } from "@/lib/db";
+import { getCard, getPhotos } from "@/lib/db";
+import { useBack } from "@/lib/useBack";
 import { useWakeLock } from "@/lib/useWakeLock";
 import { BackIcon, PencilIcon } from "@/ui/icons";
 
@@ -26,15 +27,9 @@ export function CardViewPage() {
   const card = useLiveQuery(() => getCard(id), [id]);
   const photos = useLiveQuery(() => getPhotos(id), [id]);
   const [rotated, setRotated] = useState(false);
+  const goBack = useBack();
 
   useWakeLock(card != null);
-
-  // Відмітка «карткою скористалися» ставиться саме тут, на показі коду, а не
-  // при відкритті списку: це єдиний момент, коли точно відомо, що картка
-  // справді знадобилася. З цих відміток і будується порядок у списку.
-  useEffect(() => {
-    if (id) void touchCard(id);
-  }, [id]);
 
   const barcode = useMemo(
     () => (card ? renderBarcode(card.format, card.code) : null),
@@ -42,6 +37,8 @@ export function CardViewPage() {
   );
 
   if (card === undefined) return null;
+  // Заміна, а не звичайний перехід: видалена картка не має лишати по собі
+  // запис в історії, інакше системне «назад» приводило б до неї знову.
   if (card === null) return <Navigate to="/" replace />;
 
   const matrix = isMatrixFormat(card.format);
@@ -49,13 +46,14 @@ export function CardViewPage() {
   return (
     <div className="flex h-full flex-col bg-white text-black">
       <header className="flex items-center justify-between px-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
-        <Link
-          to="/"
+        <button
+          type="button"
+          onClick={goBack}
           aria-label="Назад"
           className="flex size-11 items-center justify-center rounded-full active:bg-black/5"
         >
           <BackIcon />
-        </Link>
+        </button>
         <span className="truncate px-2 text-base font-semibold">{card.name}</span>
         <Link
           to={`/card/${card.id}/edit`}

@@ -1,6 +1,15 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { backupFileName, createBackup, parseBackup, restoreBackup } from "./backup";
-import { createCard, db, deleteCard, getPhotos, listCards, setPhoto, updateCard } from "./db";
+import {
+  createCard,
+  db,
+  deleteCard,
+  getPhotos,
+  listCards,
+  reorderCards,
+  setPhoto,
+  updateCard,
+} from "./db";
 
 const draft = (name: string) => ({
   name,
@@ -95,6 +104,80 @@ describe("копія й відновлення", () => {
     const backup = await createBackup();
 
     expect(backup.cards.map((item) => item.name)).toEqual(["Потрібна"]);
+  });
+});
+
+describe("копія й порядок карток", () => {
+  it("переносить порядок, заданий юзером", async () => {
+    const first = await createCard(draft("Перша"));
+    const second = await createCard(draft("Друга"));
+    await reorderCards([second.id, first.id]);
+    const file = await roundTrip();
+
+    await db.cards.clear();
+    await restoreFrom(file);
+
+    expect((await listCards()).map((card) => card.name)).toEqual(["Друга", "Перша"]);
+  });
+
+  it("ставить у кінець картки з копії, зробленої до появи порядку", async () => {
+    await createCard(draft("Своя"));
+
+    // Так виглядає файл, збережений старішою версією застосунку.
+    const old = JSON.stringify({
+      app: "stashcards",
+      version: 1,
+      exportedAt: Date.now(),
+      cards: [
+        {
+          id: "стара-картка",
+          name: "Зі старої копії",
+          code: "5901234123457",
+          format: "ean_13",
+          color: "#f472b6",
+          note: "",
+          createdAt: 1,
+          updatedAt: 1,
+          lastUsedAt: 0,
+          usageCount: 7,
+        },
+      ],
+    });
+
+    await restoreFrom(old);
+
+    expect((await listCards()).map((card) => card.name)).toEqual([
+      "Своя",
+      "Зі старої копії",
+    ]);
+  });
+
+  it("не тягне в базу полів, яких у застосунку вже немає", async () => {
+    const old = JSON.stringify({
+      app: "stashcards",
+      version: 1,
+      exportedAt: Date.now(),
+      cards: [
+        {
+          id: "стара-картка",
+          name: "Зі старої копії",
+          code: "5901234123457",
+          format: "ean_13",
+          color: "#f472b6",
+          note: "",
+          createdAt: 1,
+          updatedAt: 1,
+          lastUsedAt: 123,
+          usageCount: 7,
+        },
+      ],
+    });
+
+    await restoreFrom(old);
+
+    const [restored] = await listCards();
+    expect(restored).not.toHaveProperty("usageCount");
+    expect(restored).not.toHaveProperty("lastUsedAt");
   });
 });
 
